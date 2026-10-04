@@ -178,6 +178,31 @@
   .modo button.ativo { background: var(--tinta); color: var(--cartao); }
 
   .copiar.secundario { margin-top: 10px; background: var(--cartao); color: var(--tinta); }
+
+  .mes-nav { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 14px 0 10px; }
+  .mes-nav b { font-family: 'Barlow Condensed', sans-serif; font-size: 26px; font-weight: 600; }
+  .mes-nav button {
+    min-height: 48px; padding: 0 14px; border: 2px solid var(--tinta); background: var(--cartao);
+    font: inherit; font-weight: 600; font-size: 16px; color: var(--tinta); cursor: pointer; border-radius: 4px;
+  }
+  .grade { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .grade .cab { text-align: center; font-weight: 600; color: var(--suave); padding: 4px 0; font-size: 15px; }
+  .grade .vazio-dia { min-height: 56px; }
+  .dia {
+    position: relative; min-height: 56px; border: 1px solid var(--regua); background: var(--cartao);
+    color: var(--tinta); font: inherit; font-size: 18px; font-weight: 600; cursor: pointer; border-radius: 4px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 4px 0;
+    font-variant-numeric: tabular-nums;
+  }
+  .dia.hoje { border: 2px solid var(--tinta); }
+  .dia.com small {
+    margin-top: 2px; min-width: 22px; padding: 1px 6px; border-radius: 10px;
+    background: var(--tinta); color: var(--cartao); font-size: 13px; font-weight: 600;
+  }
+  .dia.sel { background: var(--aviso-fundo); border-color: var(--aviso); }
+  .detalhe { margin-top: 18px; border-top: 2px solid var(--tinta); padding-top: 6px; }
+  .detalhe-titulo { font-family: 'Barlow Condensed', sans-serif; font-size: 24px; font-weight: 600; margin: 8px 0; }
+  .detalhe-titulo small { display: block; font-size: 16px; color: var(--suave); font-family: 'Barlow', sans-serif; }
   .copiar {
     margin-top: 16px;
     width: 100%;
@@ -224,7 +249,7 @@
 <body>
 <header class="topo">
   <h1 id="data-titulo">Manejo diário</h1>
-  <p class="gerado">Gerado em 04/10/2026, 14:51:33</p>
+  <p class="gerado">Gerado em 04/10/2026, 14:54:09</p>
   <div class="resumo" id="resumo"></div>
   <button class="copiar" id="copiar">Copiar resumo para o WhatsApp</button>
   <button class="copiar secundario" id="copiar-pev">Copiar protocolos PEV para o WhatsApp</button>
@@ -403,6 +428,51 @@ function agrupar(lista, atrasada) {
   return modo === 'manejo' ? porManejo(lista, atrasada) : porLote(lista, atrasada);
 }
 
+// Calendário: lista (como antes) ou grade do mês com a contagem de tarefas em cada dia.
+let vista = 'lista';
+try { vista = localStorage.getItem('calendario-vista') === 'mes' ? 'mes' : 'lista'; } catch (e) { vista = 'lista'; }
+let mesRef = null;
+let diaSel = null;
+
+function seletorVista() {
+  return '<div class="modo" role="group" aria-label="Forma do calendário">' +
+    '<button data-vista="lista" class="' + (vista === 'lista' ? 'ativo' : '') + '">Lista</button>' +
+    '<button data-vista="mes" class="' + (vista === 'mes' ? 'ativo' : '') + '">Mês</button></div>';
+}
+
+function calendarioMes(agenda, hoje) {
+  if (!mesRef) mesRef = hoje.slice(0, 7);
+  if (!diaSel && mesRef === hoje.slice(0, 7)) diaSel = hoje;
+  const [ano, mes] = mesRef.split('-').map(Number);
+  const primeiro = new Date(ano, mes - 1, 1);
+  const diasNoMes = new Date(ano, mes, 0).getDate();
+  const nomeMesBruto = primeiro.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  const nomeMes = nomeMesBruto.charAt(0).toUpperCase() + nomeMesBruto.slice(1);
+  const contagem = new Map();
+  for (const t of agenda) contagem.set(t.data, (contagem.get(t.data) || 0) + 1);
+
+  let html = '<div class="mes-nav"><button data-mes="-1">Anterior</button><b>' + esc(nomeMes) + '</b><button data-mes="1">Próximo</button></div>';
+  html += '<div class="grade">' + ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map(l => '<div class="cab">' + l + '</div>').join('');
+  for (let i = 0; i < primeiro.getDay(); i++) html += '<div class="vazio-dia"></div>';
+  for (let d = 1; d <= diasNoMes; d++) {
+    const iso = mesRef + '-' + String(d).padStart(2, '0');
+    const n = contagem.get(iso) || 0;
+    html += '<button class="dia' + (iso === hoje ? ' hoje' : '') + (iso === diaSel ? ' sel' : '') + (n ? ' com' : '') +
+      '" data-dia="' + iso + '" aria-label="Dia ' + d + (n ? ', ' + n + ' tarefas' : '') + '"><span>' + d + '</span>' +
+      (n ? '<small>' + n + '</small>' : '') + '</button>';
+  }
+  html += '</div>';
+
+  if (diaSel && diaSel.slice(0, 7) === mesRef) {
+    const doDia = agenda.filter(t => t.data === diaSel);
+    html += '<div class="detalhe"><h3 class="detalhe-titulo">' + esc(diaSemana(diaSel)) + '<small>' + dataBR(diaSel) + '</small></h3>' +
+      (doDia.length ? agrupar(doDia, false) : '<p class="vazio">Nada programado neste dia.</p>') + '</div>';
+  } else {
+    html += '<p class="vazio">Toque em um dia para ver os manejos.</p>';
+  }
+  return html;
+}
+
 function linhaFeita(k) {
   return '<div class="historico-linha"><span class="brinco">' + esc(k.brinco) + '</span>' +
     '<span>' + esc(k.nome) + '<br><span class="meta">' + esc(k.lote || '') + ' · ' + esc(k.dataFeita) + '</span></span>' +
@@ -436,8 +506,11 @@ function desenhar() {
   const proximos = [...c.futuras, ...c.avisos.filter(t => t.data > hoje)]
     .sort((a, b) => a.data.localeCompare(b.data) || a.lote.localeCompare(b.lote))
     .slice(0, 200);
-  document.getElementById('calendario').innerHTML =
-    seletorModo() + '<h2>Próximos dias</h2>' + (proximos.length ? porData(proximos) : '<p class="vazio">Nenhuma tarefa programada.</p>');
+  const agenda = [...c.hoje, ...c.futuras, ...c.avisos.filter(t => t.data >= hoje)];
+  const corpoCalendario = vista === 'mes'
+    ? calendarioMes(agenda, hoje)
+    : '<h2>Próximos dias</h2>' + (proximos.length ? porData(proximos) : '<p class="vazio">Nenhuma tarefa programada.</p>');
+  document.getElementById('calendario').innerHTML = seletorVista() + seletorModo() + corpoCalendario;
 
   const feitos = checks.slice().sort((a, b) => (String(b.dataFeita) + String(b.hora)).localeCompare(String(a.dataFeita) + String(a.hora)));
   let corpoHistorico = '<p class="vazio">Nenhuma marcação ainda.</p>';
@@ -521,6 +594,19 @@ document.addEventListener('click', ev => {
     document.querySelectorAll('nav.abas button').forEach(x => x.classList.toggle('ativa', x === b));
     document.querySelectorAll('.aba').forEach(s => s.classList.toggle('ativa', s.id === b.dataset.aba));
     window.scrollTo(0, 0);
+  } else if (b.dataset.vista) {
+    vista = b.dataset.vista;
+    try { localStorage.setItem('calendario-vista', vista); } catch (e) { /* sem armazenamento: só nesta sessão */ }
+    desenhar();
+  } else if (b.dataset.mes) {
+    const [a, m] = (mesRef || hojeISO().slice(0, 7)).split('-').map(Number);
+    const novo = new Date(a, m - 1 + Number(b.dataset.mes), 1);
+    mesRef = novo.getFullYear() + '-' + String(novo.getMonth() + 1).padStart(2, '0');
+    diaSel = null;
+    desenhar();
+  } else if (b.dataset.dia) {
+    diaSel = b.dataset.dia;
+    desenhar();
   } else if (b.dataset.modo) {
     modo = b.dataset.modo;
     try { localStorage.setItem('manejo-modo', modo); } catch (e) { /* sem armazenamento: só nesta sessão */ }
