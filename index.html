@@ -227,6 +227,12 @@
   .dia.sel { background: var(--aviso-fundo); border-color: var(--aviso); }
   .detalhe { margin-top: 18px; border-top: 2px solid var(--tinta); padding-top: 6px; }
   .detalhe-titulo { font-family: 'Barlow Condensed', sans-serif; font-size: 24px; font-weight: 600; margin: 8px 0; }
+  .historico-linha { grid-template-columns: 84px 1fr auto auto; }
+  .desfazer {
+    min-height: 48px; padding: 0 12px; border: 2px solid var(--atraso); background: var(--cartao);
+    color: var(--atraso); font: inherit; font-weight: 600; font-size: 15px; cursor: pointer; border-radius: 4px;
+  }
+  .desfazer.confirmar { background: var(--atraso); color: var(--cartao); }
   .detalhe-titulo small { display: block; font-size: 16px; color: var(--suave); font-family: 'Barlow', sans-serif; }
   .copiar {
     margin-top: 16px;
@@ -277,7 +283,7 @@
     <h1 id="data-titulo">Manejo diário</h1>
     <button class="sair" id="sair" type="button" hidden>Trocar de pessoa</button>
   </div>
-  <p class="gerado">Gerado em 04/10/2026, 15:08:50 <span class="quem" id="quem"></span></p>
+  <p class="gerado">Gerado em 04/10/2026, 15:17:01 <span class="quem" id="quem"></span></p>
   <div class="resumo" id="resumo"></div>
   <button class="copiar" id="copiar">Copiar resumo para o WhatsApp</button>
   <button class="copiar secundario" id="copiar-pev">Copiar protocolos PEV para o WhatsApp</button>
@@ -522,10 +528,35 @@ function calendarioMes(agenda, hoje) {
   return html;
 }
 
+let desfazerPendente = null;
+
 function linhaFeita(k) {
+  const s = sessao();
+  const pode = s && k.quem === s.usuario;
+  const botao = pode
+    ? '<button class="desfazer' + (desfazerPendente === k.tarefaId ? ' confirmar' : '') + '" data-desfazer="' + esc(k.tarefaId) + '">' +
+      (desfazerPendente === k.tarefaId ? 'Confirmar' : 'Desfazer') + '</button>'
+    : '';
   return '<div class="historico-linha"><span class="brinco">' + esc(k.brinco) + '</span>' +
     '<span>' + esc(k.nome) + '<br><span class="meta">' + esc(k.lote || '') + ' · ' + esc(k.dataFeita) + (k.quem ? ' · ' + esc(k.quem) : '') + '</span></span>' +
-    '<span class="hora feito-marca">' + esc(k.hora) + '</span></div>';
+    '<span class="hora feito-marca">' + esc(k.hora) + '</span>' + botao + '</div>';
+}
+
+async function desfazer(id) {
+  const s = sessao();
+  if (!s) { mostrarEntrar(); return; }
+  let j = { ok: false };
+  try {
+    const r = await fetch(DADOS.endpoint, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ token: DADOS.token, acao: 'desfazer', usuario: s.usuario, pin: s.pin, tarefaId: id }) });
+    j = await r.json();
+  } catch (e) { j = { ok: false }; }
+  desfazerPendente = null;
+  if (j.ok) {
+    checks = checks.filter(c => c.tarefaId !== id);
+  } else {
+    alert(j.motivo === 'outro' ? 'Só quem marcou pode desfazer esta marcação.' : 'Não consegui desfazer. Tente de novo.');
+  }
+  desenhar();
 }
 
 function desenhar() {
@@ -658,6 +689,14 @@ document.addEventListener('click', ev => {
   } else if (b.dataset.dia) {
     diaSel = b.dataset.dia;
     desenhar();
+  } else if (b.dataset.desfazer) {
+    const id = b.dataset.desfazer;
+    if (desfazerPendente !== id) {
+      desfazerPendente = id;
+      desenhar();
+    } else {
+      desfazer(id);
+    }
   } else if (b.dataset.modo) {
     modo = b.dataset.modo;
     try { localStorage.setItem('manejo-modo', modo); } catch (e) { /* sem armazenamento: só nesta sessão */ }
