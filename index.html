@@ -209,7 +209,7 @@
 <body>
 <header class="topo">
   <h1 id="data-titulo">Manejo diário</h1>
-  <p class="gerado">Gerado em 04/10/2026, 12:49:39</p>
+  <p class="gerado">Gerado em 04/10/2026, 12:54:35</p>
   <div class="resumo" id="resumo"></div>
 </header>
 <main>
@@ -311,7 +311,7 @@ function porLote(lista, atrasada) {
 function porData(lista) {
   const datas = [...new Set(lista.map(t => t.data))].sort();
   return datas.map(d => '<div class="grupo"><h3>' + esc(diaSemana(d)) + '<small>' + dataBR(d) + '</small></h3>' +
-    porLote(lista.filter(t => t.data === d), false) + '</div>').join('');
+    agrupar(lista.filter(t => t.data === d), false) + '</div>').join('');
 }
 
 // Dois modos de agrupar: por lote (como sempre) ou por manejo (o que aplicar), para levar uma cor de cada vez.
@@ -375,7 +375,7 @@ function desenhar() {
     .sort((a, b) => a.data.localeCompare(b.data) || a.lote.localeCompare(b.lote))
     .slice(0, 200);
   document.getElementById('calendario').innerHTML =
-    '<h2>Próximos dias</h2>' + (proximos.length ? porData(proximos) : '<p class="vazio">Nenhuma tarefa programada.</p>');
+    seletorModo() + '<h2>Próximos dias</h2>' + (proximos.length ? porData(proximos) : '<p class="vazio">Nenhuma tarefa programada.</p>');
 
   const feitos = checks.slice().sort((a, b) => (String(b.dataFeita) + String(b.hora)).localeCompare(String(a.dataFeita) + String(a.hora)));
   let corpoHistorico = '<p class="vazio">Nenhuma marcação ainda.</p>';
