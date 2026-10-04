@@ -162,6 +162,21 @@
     border-left: 6px solid var(--aviso);
   }
 
+  .modo { display: flex; gap: 0; margin: 16px 0 4px; border: 2px solid var(--tinta); width: max-content; max-width: 100%; }
+  .modo button {
+    min-height: 48px;
+    padding: 0 18px;
+    border: 0;
+    background: var(--cartao);
+    color: var(--tinta);
+    font: inherit;
+    font-weight: 600;
+    font-size: 17px;
+    cursor: pointer;
+  }
+  .modo button + button { border-left: 2px solid var(--tinta); }
+  .modo button.ativo { background: var(--tinta); color: var(--cartao); }
+
   nav.abas {
     position: fixed;
     left: 0; right: 0; bottom: 0;
@@ -194,7 +209,7 @@
 <body>
 <header class="topo">
   <h1 id="data-titulo">Manejo diário</h1>
-  <p class="gerado">Gerado em 04/10/2026, 12:42:08</p>
+  <p class="gerado">Gerado em 04/10/2026, 12:49:39</p>
   <div class="resumo" id="resumo"></div>
 </header>
 <main>
@@ -299,6 +314,39 @@ function porData(lista) {
     porLote(lista.filter(t => t.data === d), false) + '</div>').join('');
 }
 
+// Dois modos de agrupar: por lote (como sempre) ou por manejo (o que aplicar), para levar uma cor de cada vez.
+let modo = 'lote';
+try { modo = localStorage.getItem('manejo-modo') === 'manejo' ? 'manejo' : 'lote'; } catch (e) { modo = 'lote'; }
+
+function seletorModo() {
+  return '<div class="modo" role="group" aria-label="Agrupar por">' +
+    '<button data-modo="lote" class="' + (modo === 'lote' ? 'ativo' : '') + '">Por lote</button>' +
+    '<button data-modo="manejo" class="' + (modo === 'manejo' ? 'ativo' : '') + '">Por manejo</button></div>';
+}
+
+function porManejo(lista, atrasada) {
+  const grupos = new Map();
+  for (const t of lista) {
+    if (!grupos.has(t.nome)) grupos.set(t.nome, []);
+    grupos.get(t.nome).push(t);
+  }
+  return [...grupos.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([nome, itens]) =>
+    '<div class="grupo' + (atrasada ? ' atrasadas' : '') + '"><h3>' + (atrasada ? 'Atrasadas · ' : '') + esc(nome) +
+    '<small>' + itens.length + '</small></h3>' +
+    itens.sort((a, b) => a.lote.localeCompare(b.lote) || a.brinco.localeCompare(b.brinco)).map(t => linha(t, atrasada)).join('') + '</div>'
+  ).join('');
+}
+
+function agrupar(lista, atrasada) {
+  return modo === 'manejo' ? porManejo(lista, atrasada) : porLote(lista, atrasada);
+}
+
+function linhaFeita(k) {
+  return '<div class="historico-linha"><span class="brinco">' + esc(k.brinco) + '</span>' +
+    '<span>' + esc(k.nome) + '<br><span class="meta">' + esc(k.lote || '') + ' · ' + esc(k.dataFeita) + '</span></span>' +
+    '<span class="hora feito-marca">' + esc(k.hora) + '</span></div>';
+}
+
 function desenhar() {
   const hoje = hojeISO();
   const c = classificarTarefas(DADOS.tarefas, checks, hoje);
@@ -317,10 +365,10 @@ function desenhar() {
   const semPendencia = c.atrasadas.length + pendentesHoje === 0
     ? '<p class="vazio">Nada pendente para hoje.</p>' : '';
   document.getElementById('hoje').innerHTML =
-    banner +
-    porLote(c.atrasadas, true) +
-    porLote(c.hoje, false) +
-    (avisosHoje.length ? porLote(avisosHoje, false) : '') +
+    banner + seletorModo() +
+    agrupar(c.atrasadas, true) +
+    agrupar(c.hoje, false) +
+    (avisosHoje.length ? agrupar(avisosHoje, false) : '') +
     semPendencia;
 
   const proximos = [...c.futuras, ...c.avisos.filter(t => t.data > hoje)]
@@ -330,12 +378,20 @@ function desenhar() {
     '<h2>Próximos dias</h2>' + (proximos.length ? porData(proximos) : '<p class="vazio">Nenhuma tarefa programada.</p>');
 
   const feitos = checks.slice().sort((a, b) => (String(b.dataFeita) + String(b.hora)).localeCompare(String(a.dataFeita) + String(a.hora)));
-  document.getElementById('historico').innerHTML =
-    '<h2>Feitos</h2>' + (feitos.length
-      ? feitos.map(k => '<div class="historico-linha"><span class="brinco">' + esc(k.brinco) + '</span>' +
-          '<span>' + esc(k.nome) + '<br><span class="meta">' + esc(k.dataFeita) + '</span></span>' +
-          '<span class="hora feito-marca">' + esc(k.hora) + '</span></div>').join('')
-      : '<p class="vazio">Nenhuma marcação ainda.</p>');
+  let corpoHistorico = '<p class="vazio">Nenhuma marcação ainda.</p>';
+  if (feitos.length) {
+    const chave = modo === 'manejo' ? 'nome' : 'lote';
+    const grupos = new Map();
+    for (const k of feitos) {
+      const g = String(k[chave] || 'Sem lote');
+      if (!grupos.has(g)) grupos.set(g, []);
+      grupos.get(g).push(k);
+    }
+    corpoHistorico = [...grupos.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([g, itens]) =>
+      '<div class="grupo"><h3>' + esc(g) + '<small>' + itens.length + '</small></h3>' +
+      itens.map(linhaFeita).join('') + '</div>').join('');
+  }
+  document.getElementById('historico').innerHTML = seletorModo() + '<h2>Feitos</h2>' + corpoHistorico;
 }
 
 async function marcar(id) {
@@ -353,7 +409,7 @@ async function marcar(id) {
     const j = await r.json();
     // Só conta como feito se a planilha confirmou. Erro de token ou de planilha volta como ok:false.
     if (!resultadoGravacao(j)) throw new Error('planilha recusou');
-    checks.push({ tarefaId: t.id, brinco: t.brinco, nome: t.nome, dataFeita, hora });
+    checks.push({ tarefaId: t.id, brinco: t.brinco, lote: t.lote, nome: t.nome, dataFeita, hora });
   } catch (e) {
     alert('Não consegui gravar. A tarefa continua pendente; toque em Feito de novo.');
   } finally {
@@ -369,6 +425,10 @@ document.addEventListener('click', ev => {
     document.querySelectorAll('nav.abas button').forEach(x => x.classList.toggle('ativa', x === b));
     document.querySelectorAll('.aba').forEach(s => s.classList.toggle('ativa', s.id === b.dataset.aba));
     window.scrollTo(0, 0);
+  } else if (b.dataset.modo) {
+    modo = b.dataset.modo;
+    try { localStorage.setItem('manejo-modo', modo); } catch (e) { /* sem armazenamento: só nesta sessão */ }
+    desenhar();
   } else if (b.dataset.id) {
     marcar(b.dataset.id);
   }
