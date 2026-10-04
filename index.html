@@ -84,6 +84,8 @@
   }
   .grupo h3 small { font-size: 16px; color: var(--suave); font-weight: 500; }
   .grupo.atrasadas h3 { color: var(--atraso); border-color: var(--atraso); }
+  .grupo .grupo { margin-top: 10px; }
+  .grupo .grupo h3 { font-size: 19px; border-bottom: 0; color: var(--suave); }
 
   .linha {
     display: grid;
@@ -192,7 +194,7 @@
 <body>
 <header class="topo">
   <h1 id="data-titulo">Manejo diário</h1>
-  <p class="gerado">Gerado em 04/10/2026, 11:19:07</p>
+  <p class="gerado">Gerado em 04/10/2026, 12:19:23</p>
   <div class="resumo" id="resumo"></div>
 </header>
 <main>
@@ -290,10 +292,11 @@ function porLote(lista, atrasada) {
   ).join('');
 }
 
+// Dia primeiro; dentro do dia, cada lote fica junto com o seu nome.
 function porData(lista) {
   const datas = [...new Set(lista.map(t => t.data))].sort();
   return datas.map(d => '<div class="grupo"><h3>' + esc(diaSemana(d)) + '<small>' + dataBR(d) + '</small></h3>' +
-    lista.filter(t => t.data === d).map(t => linha(t, false)).join('') + '</div>').join('');
+    porLote(lista.filter(t => t.data === d), false) + '</div>').join('');
 }
 
 function desenhar() {
