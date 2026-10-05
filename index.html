@@ -296,7 +296,7 @@
     <h1 id="data-titulo">Manejo diário</h1>
     <button class="sair" id="sair" type="button" hidden>Trocar de pessoa</button>
   </div>
-  <p class="gerado">Gerado em 05/10/2026, 16:40:41 <span class="quem" id="quem"></span></p>
+  <p class="gerado">Gerado em 05/10/2026, 17:23:50 <span class="quem" id="quem"></span></p>
   <div class="resumo" id="resumo"></div>
   <button class="copiar" id="copiar">Copiar resumo para o WhatsApp</button>
   <button class="copiar secundario" id="copiar-pev">Copiar protocolos PEV para o WhatsApp</button>
@@ -416,22 +416,36 @@ function diaSemana(iso) {
 let checks = [];
 let marcacoes = [];
 let leituraFalhou = false;
+// Enquanto a primeira leitura não termina, não mostra as tarefas como pendentes (pareceria que as marcações sumiram).
+let leituraOk = false;
+let lendo = false;
 let enviando = new Set();
 
+// Tenta até 3 vezes: o Google às vezes devolve erro passageiro. Se falhar de vez, mantém o que já tinha lido.
 async function carregarChecks() {
-  try {
-    const r = await fetch(DADOS.endpoint + '?token=' + encodeURIComponent(DADOS.token));
-    const j = await r.json();
-    const l = interpretarLeitura(j);
-    marcacoes = Array.isArray(j.marcacoes) ? j.marcacoes : [];
-    checks = l.checks;
-    leituraFalhou = l.erro;
-  } catch (e) {
-    checks = [];
-    leituraFalhou = true;
+  if (lendo) return;
+  lendo = true;
+  let ok = false;
+  for (let tentativa = 0; tentativa < 3 && !ok; tentativa++) {
+    if (tentativa) await new Promise(r => setTimeout(r, 1000 * tentativa));
+    try {
+      const r = await fetch(DADOS.endpoint + '?token=' + encodeURIComponent(DADOS.token));
+      const j = await r.json();
+      const l = interpretarLeitura(j);
+      if (l.erro) continue;
+      marcacoes = Array.isArray(j.marcacoes) ? j.marcacoes : [];
+      checks = l.checks;
+      ok = true;
+    } catch (e) { /* tenta de novo */ }
   }
+  lendo = false;
+  leituraFalhou = !ok && !leituraOk;
+  if (ok) leituraOk = true;
   desenhar();
 }
+
+// Ao voltar para a aba ou abrir de novo o aparelho, relê: assim as marcações feitas em outro aparelho aparecem.
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') carregarChecks(); });
 
 // Cor fixa por tipo de manejo: quem marca vê de longe o que é cada grupo.
 const CORES_MANEJO = { 'Sincroforte': '#2B6CB0', 'PG': '#C05621', 'ECP + PG': '#2F855A', 'PG + ECP': '#6B46C1', 'IA': '#B83280', 'Pula IA': '#8A5A00', 'E. coli dose 1': '#00838F', 'E. coli dose 2': '#4A5568' };
@@ -605,11 +619,12 @@ function desenhar() {
     '<div class="r-aviso"><b>' + avisosHoje.length + '</b><span>avisos</span></div>';
 
   const banner = leituraFalhou
-    ? '<p class="banner">Não consegui ler as marcações. Antes de dar qualquer dose, confira no caderno se já foi feita.</p>'
+    ? '<p class="banner">Não consegui ler as marcações: o que aparece pendente pode já ter sido feito. Antes de dar qualquer dose, confira no caderno. <button class="feito-btn" data-recarregar="1" style="margin-top:8px">Tentar de novo</button></p>'
     : '';
+  const carregando = !leituraOk && !leituraFalhou;
   const semPendencia = c.atrasadas.length + pendentesHoje === 0
     ? '<p class="vazio">Nada pendente para hoje.</p>' : '';
-  document.getElementById('hoje').innerHTML =
+  document.getElementById('hoje').innerHTML = carregando ? '<p class="vazio">Carregando as marcações…</p>' :
     banner + seletorModo() +
     agrupar(c.atrasadas, true) +
     agrupar(c.hoje, false) +
@@ -625,7 +640,7 @@ function desenhar() {
     : '<h2>Próximos dias</h2>' + (proximos.length ? porData(proximos) : '<p class="vazio">Nenhuma tarefa programada.</p>');
   document.getElementById('calendario').innerHTML = seletorVista() + seletorModo() + corpoCalendario;
 
-  document.getElementById('abertos').innerHTML = abertosHtml(hoje);
+  document.getElementById('abertos').innerHTML = carregando ? '<p class="vazio">Carregando as marcações…</p>' : abertosHtml(hoje);
 
   const feitos = checks.slice().sort((a, b) => (String(b.dataFeita) + String(b.hora)).localeCompare(String(a.dataFeita) + String(a.hora)));
   let corpoHistorico = '<p class="vazio">Nenhuma marcação ainda.</p>';
@@ -808,6 +823,10 @@ document.addEventListener('click', ev => {
     modo = b.dataset.modo;
     try { localStorage.setItem('manejo-modo', modo); } catch (e) { /* sem armazenamento: só nesta sessão */ }
     desenhar();
+  } else if (b.dataset.recarregar) {
+    leituraFalhou = false;
+    desenhar();
+    carregarChecks();
   } else if (b.dataset.marcar) {
     marcarAnimal(b.dataset.marcar, false);
   } else if (b.dataset.desmarcar) {
